@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models import Tool
 from schemas import ToolCreate, ToolResponse
-from services.claude_service import generate_signal_summary
+from services.ai_service import generate_signal_summary
 from services.tool_service import normalize_url, upsert_tool
 
 router = APIRouter(prefix="/api/tools", tags=["tools"])
