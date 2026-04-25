@@ -36,14 +36,16 @@ def add(ctx, url):
         page = _httpx.get(url, follow_redirects=True, timeout=15)
         soup = BeautifulSoup(page.text, "html.parser")
 
+        # Note: bs4 Tag defines __len__, so an empty self-closing tag like
+        # <meta> evaluates as falsy. Use `is not None` for presence checks.
+        og_title_tag = soup.find("meta", {"property": "og:title"})
+        og_title = og_title_tag.get("content") if og_title_tag is not None else None
         h1_tag = soup.find("h1")
-        name = (
-            (soup.find("meta", {"property": "og:title"}) or {}).get("content")
-            or (h1_tag.get_text(strip=True) if h1_tag else None)
-            or url
-        )
+        h1_text = h1_tag.get_text(strip=True) if h1_tag is not None else None
+        name = og_title or h1_text or url
+
         desc_meta = soup.find("meta", {"name": "description"})
-        desc = desc_meta["content"] if desc_meta else ""
+        desc = desc_meta.get("content", "") if desc_meta is not None else ""
         raw = soup.get_text(separator=" ")[:8000]
     except Exception as e:
         console.print(f"[red]Failed to fetch page:[/red] {e}")

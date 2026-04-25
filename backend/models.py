@@ -23,8 +23,9 @@ class Tool(Base):
 class AnalyticsEvent(Base):
     __tablename__ = "analytics_events"
 
-    id         = Column(Integer, primary_key=True, index=True)
-    tool_id    = Column(Integer, ForeignKey("tools.id"), nullable=False)
-    event_type = Column(String(50))   # "click" | "view"
-    timestamp  = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    metadata   = Column(Text)         # JSON blob
+    id             = Column(Integer, primary_key=True, index=True)
+    tool_id        = Column(Integer, ForeignKey("tools.id"), nullable=False)
+    event_type     = Column(String(50))   # "click" | "view"
+    timestamp      = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    # Renamed from `metadata` — that name is reserved by SQLAlchemy's DeclarativeBase.
+    event_metadata = Column("metadata", Text)  # JSON blob

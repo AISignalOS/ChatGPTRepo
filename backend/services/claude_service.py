@@ -5,8 +5,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-
 SYSTEM_PROMPT = """You are a research analyst specializing in AI productivity tools.
 Your job is to analyze raw webpage content and extract structured intelligence about AI tools.
 
@@ -22,6 +20,7 @@ Respond with raw JSON only — no markdown fences, no explanation."""
 
 
 def generate_signal_summary(raw_content: str, tool_name: str, tool_url: str) -> dict:
+    client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
     response = client.messages.create(
         model="claude-sonnet-4-6",
         max_tokens=1024,

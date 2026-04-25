@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -10,7 +11,7 @@ from services.tool_service import normalize_url, upsert_tool
 router = APIRouter(prefix="/api/tools", tags=["tools"])
 
 
-@router.post("/", response_model=ToolResponse, status_code=201)
+@router.post("", response_model=ToolResponse, status_code=201)
 def create_tool(payload: ToolCreate, db: Session = Depends(get_db)):
     normalized = normalize_url(payload.url)
     existing = db.query(Tool).filter(Tool.url == normalized).first()
@@ -25,7 +26,7 @@ def create_tool(payload: ToolCreate, db: Session = Depends(get_db)):
     return tool
 
 
-@router.get("/", response_model=list[ToolResponse])
+@router.get("", response_model=list[ToolResponse])
 def list_tools(
     use_case: str = Query(None),
     price_tier: str = Query(None),
@@ -52,7 +53,9 @@ def get_tool(tool_id: int, db: Session = Depends(get_db)):
     tool = db.query(Tool).filter(Tool.id == tool_id).first()
     if not tool:
         raise HTTPException(status_code=404, detail="Tool not found")
-    tool.view_count += 1
+    db.execute(
+        update(Tool).where(Tool.id == tool_id).values(view_count=Tool.view_count + 1)
+    )
     db.commit()
     db.refresh(tool)
     return tool
