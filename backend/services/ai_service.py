@@ -1,12 +1,33 @@
 """
 Multi-provider AI service for generating Signal Summaries.
 
-Supported providers (set via MODEL_PROVIDER env var):
-  anthropic   — Claude via Anthropic SDK (default); uses prompt caching
-  ollama      — Any local model via Ollama's OpenAI-compatible API
-  openrouter  — Any model via OpenRouter's OpenAI-compatible API
+Set MODEL_PROVIDER to one of the supported providers below.
+Set MODEL_NAME to override the default model for any provider.
 
-Model is selected via MODEL_NAME env var; each provider has a sensible default.
+Supported providers
+───────────────────
+Frontier / cloud (OpenAI-compatible API):
+  openai      — GPT-4o, o1, o3, etc.
+  google      — Gemini 2.0 Flash, Pro, Ultra, etc.
+  xai         — Grok 3, Grok 2, etc.
+  mistral     — Mistral Large, Codestral, etc.
+  groq        — Llama 3.3, Mixtral, Gemma, etc. (fast inference)
+  deepseek    — DeepSeek V3, R1, etc.
+  together    — 200+ open models via Together AI
+  perplexity  — Sonar, Sonar Pro, etc.
+  cohere      — Command R+, Command R, etc.
+
+Aggregators (access many models with one key):
+  openrouter  — Any model on OpenRouter (300+ models)
+
+Local / self-hosted:
+  ollama      — Any model running locally via Ollama
+
+Anthropic (special — uses prompt caching):
+  anthropic   — Claude (default)
+
+Escape hatch for any other OpenAI-compatible endpoint:
+  custom      — Set CUSTOM_BASE_URL + CUSTOM_API_KEY + MODEL_NAME
 """
 
 import json
@@ -28,6 +49,84 @@ Always respond with a valid JSON object containing exactly these fields:
 Be concise and factual. Do not invent features not present in the content.
 If pricing information is unclear, default to "freemium".
 Respond with raw JSON only — no markdown fences, no explanation."""
+
+# Registry of all OpenAI-compatible providers.
+# Keys:
+#   base_url        — static endpoint URL
+#   base_url_env    — env var holding the endpoint (dynamic/self-hosted providers)
+#   default_base_url— fallback when base_url_env is unset
+#   append_v1       — append "/v1" to the resolved base URL (e.g. Ollama)
+#   api_key_env     — env var holding the API key
+#   api_key         — static API key (for providers that don't require one)
+#   default_model   — used when MODEL_NAME env var is not set
+_REGISTRY: dict[str, dict] = {
+    "openai": {
+        "base_url":     "https://api.openai.com/v1",
+        "api_key_env":  "OPENAI_API_KEY",
+        "default_model": "gpt-4o",
+    },
+    "google": {
+        # Gemini via its OpenAI-compatible endpoint
+        "base_url":     "https://generativelanguage.googleapis.com/v1beta/openai/",
+        "api_key_env":  "GOOGLE_API_KEY",
+        "default_model": "gemini-2.0-flash",
+    },
+    "xai": {
+        # Grok models
+        "base_url":     "https://api.x.ai/v1",
+        "api_key_env":  "XAI_API_KEY",
+        "default_model": "grok-3",
+    },
+    "mistral": {
+        "base_url":     "https://api.mistral.ai/v1",
+        "api_key_env":  "MISTRAL_API_KEY",
+        "default_model": "mistral-large-latest",
+    },
+    "groq": {
+        "base_url":     "https://api.groq.com/openai/v1",
+        "api_key_env":  "GROQ_API_KEY",
+        "default_model": "llama-3.3-70b-versatile",
+    },
+    "deepseek": {
+        "base_url":     "https://api.deepseek.com/v1",
+        "api_key_env":  "DEEPSEEK_API_KEY",
+        "default_model": "deepseek-chat",
+    },
+    "together": {
+        "base_url":     "https://api.together.xyz/v1",
+        "api_key_env":  "TOGETHER_API_KEY",
+        "default_model": "meta-llama/Llama-3.3-70b-instruct-turbo",
+    },
+    "perplexity": {
+        "base_url":     "https://api.perplexity.ai",
+        "api_key_env":  "PERPLEXITY_API_KEY",
+        "default_model": "sonar-pro",
+    },
+    "cohere": {
+        "base_url":     "https://api.cohere.com/compatibility/v1",
+        "api_key_env":  "COHERE_API_KEY",
+        "default_model": "command-r-plus",
+    },
+    "openrouter": {
+        "base_url":     "https://openrouter.ai/api/v1",
+        "api_key_env":  "OPENROUTER_API_KEY",
+        "default_model": "mistralai/mistral-7b-instruct",
+    },
+    "ollama": {
+        "base_url_env":     "OLLAMA_BASE_URL",
+        "default_base_url": "http://localhost:11434",
+        "append_v1":        True,
+        "api_key":          "ollama",
+        "default_model":    "llama3.2",
+    },
+    "custom": {
+        "base_url_env":  "CUSTOM_BASE_URL",
+        "api_key_env":   "CUSTOM_API_KEY",
+        "default_model": "",
+    },
+}
+
+_ALL_PROVIDERS = sorted(["anthropic"] + list(_REGISTRY))
 
 
 def _strip_json(text: str) -> str:
@@ -99,32 +198,58 @@ def _generate_openai_compat(
     return json.loads(_strip_json(response.choices[0].message.content))
 
 
+def _resolve_config(provider: str) -> tuple[str, str, str]:
+    """Return (base_url, api_key, model) for a registry provider."""
+    cfg = _REGISTRY[provider]
+
+    # base_url
+    if "base_url_env" in cfg:
+        raw = os.getenv(cfg["base_url_env"], cfg.get("default_base_url", ""))
+        if not raw:
+            raise ValueError(
+                f"MODEL_PROVIDER={provider!r} requires {cfg['base_url_env']} to be set."
+            )
+        base_url = raw.rstrip("/")
+        if cfg.get("append_v1") and not base_url.endswith("/v1"):
+            base_url += "/v1"
+    else:
+        base_url = cfg["base_url"]
+
+    # api_key
+    if "api_key" in cfg:
+        api_key = cfg["api_key"]
+    else:
+        key_env = cfg["api_key_env"]
+        api_key = os.environ.get(key_env, "")
+        if not api_key:
+            raise ValueError(
+                f"MODEL_PROVIDER={provider!r} requires {key_env} to be set."
+            )
+
+    # model
+    default_model = cfg["default_model"]
+    model = os.getenv("MODEL_NAME", default_model)
+    if not model:
+        raise ValueError(
+            f"MODEL_PROVIDER={provider!r} requires MODEL_NAME to be set."
+        )
+
+    return base_url, api_key, model
+
+
 def generate_signal_summary(raw_content: str, tool_name: str, tool_url: str) -> dict:
     provider = os.getenv("MODEL_PROVIDER", "anthropic").lower()
 
     if provider == "anthropic":
         return _generate_anthropic(raw_content, tool_name, tool_url)
 
-    if provider == "ollama":
-        model = os.getenv("MODEL_NAME", "llama3.2")
-        base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/") + "/v1"
-        return _generate_openai_compat(
-            raw_content, tool_name, tool_url,
-            base_url=base_url,
-            api_key="ollama",
-            model=model,
+    if provider not in _REGISTRY:
+        raise ValueError(
+            f"Unknown MODEL_PROVIDER: {provider!r}. "
+            f"Valid options: {_ALL_PROVIDERS}"
         )
 
-    if provider == "openrouter":
-        model = os.getenv("MODEL_NAME", "mistralai/mistral-7b-instruct")
-        return _generate_openai_compat(
-            raw_content, tool_name, tool_url,
-            base_url="https://openrouter.ai/api/v1",
-            api_key=os.environ["OPENROUTER_API_KEY"],
-            model=model,
-        )
-
-    raise ValueError(
-        f"Unknown MODEL_PROVIDER: {provider!r}. "
-        "Valid options: 'anthropic', 'ollama', 'openrouter'."
+    base_url, api_key, model = _resolve_config(provider)
+    return _generate_openai_compat(
+        raw_content, tool_name, tool_url, base_url, api_key, model
     )
