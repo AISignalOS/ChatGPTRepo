@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Research Agent</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f7;
+      color: #1d1d1f;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ── */
+    header {
+      background: #1d1d1f;
+      color: #f5f5f7;
+      padding: 0.875rem 1.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+    .header-brand { display: flex; flex-direction: column; gap: 2px; }
+    .header-brand h1 { font-size: 1.125rem; font-weight: 600; letter-spacing: -0.02em; }
+    .header-brand small { font-size: 0.7rem; opacity: 0.5; }
+
+    .ctx-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 20px;
+      padding: 0.3rem 0.75rem;
+      font-size: 0.75rem;
+    }
+
+    .ctx-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: #6b7280;
+      transition: background 0.3s;
+    }
+    .ctx-dot.active { background: #34d399; }
+
+    /* ── Chat scroll area ── */
+    #chat {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+      scroll-behavior: smooth;
+    }
+
+    /* ── Welcome screen ── */
+    #welcome {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      flex: 1;
+      text-align: center;
+      padding: 2rem;
+      gap: 1rem;
+    }
+
+    #welcome h2 { font-size: 1.5rem; font-weight: 600; letter-spacing: -0.03em; }
+    #welcome p { color: #6b7280; max-width: 420px; line-height: 1.6; }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      justify-content: center;
+      max-width: 560px;
+    }
+
+    .chip {
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 20px;
+      padding: 0.4rem 0.875rem;
+      font-size: 0.8125rem;
+      cursor: pointer;
+      transition: border-color 0.15s, box-shadow 0.15s;
+      color: #374151;
+    }
+    .chip:hover { border-color: #9ca3af; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+
+    /* ── Messages ── */
+    .msg {
+      display: flex;
+      gap: 0.75rem;
+      animation: pop 0.2s ease;
+    }
+    .msg.user { flex-direction: row-reverse; }
+
+    @keyframes pop {
+      from { opacity: 0; transform: translateY(6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .avatar {
+      width: 34px; height: 34px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.875rem; font-weight: 600;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+    .msg.user    .avatar { background: #1d1d1f; color: white; }
+    .msg.assistant .avatar { background: #e0e7ff; color: #4338ca; }
+
+    .bubble {
+      max-width: 76%;
+      padding: 0.8125rem 1rem;
+      border-radius: 14px;
+      line-height: 1.65;
+      font-size: 0.9375rem;
+    }
+    .msg.user      .bubble { background: #1d1d1f; color: white; border-bottom-right-radius: 4px; }
+    .msg.assistant .bubble { background: white; border: 1px solid #e5e7eb; border-bottom-left-radius: 4px; }
+
+    .bubble p        { margin: 0.45rem 0; }
+    .bubble p:first-child { margin-top: 0; }
+    .bubble p:last-child  { margin-bottom: 0; }
+    .bubble ul, .bubble ol { padding-left: 1.25rem; margin: 0.45rem 0; }
+    .bubble li       { margin: 0.2rem 0; }
+    .bubble h1, .bubble h2, .bubble h3 { margin: 0.6rem 0 0.25rem; font-size: 1em; }
+    .bubble strong   { font-weight: 600; }
+    .bubble em       { font-style: italic; }
+    .bubble code     { background: #f3f4f6; padding: 0.1em 0.3em; border-radius: 4px; font-size: 0.875em; font-family: 'SF Mono', Menlo, monospace; }
+    .bubble pre      { background: #f3f4f6; padding: 0.75rem; border-radius: 8px; overflow-x: auto; margin: 0.5rem 0; }
+    .bubble pre code { background: none; padding: 0; }
+    .bubble a        { color: #4338ca; text-decoration: none; }
+    .bubble a:hover  { text-decoration: underline; }
+
+    /* blinking cursor while streaming */
+    .cursor {
+      display: inline-block;
+      width: 2px; height: 1em;
+      background: #374151;
+      margin-left: 2px;
+      vertical-align: text-bottom;
+      animation: blink 1s step-end infinite;
+    }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+    /* searching indicator */
+    .thinking {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: #6b7280;
+      font-size: 0.875rem;
+      padding: 0.25rem 0;
+    }
+    .dots { display: flex; gap: 4px; }
+    .dots span {
+      width: 5px; height: 5px; border-radius: 50%;
+      background: #9ca3af;
+      animation: bounce 1.2s infinite ease-in-out;
+    }
+    .dots span:nth-child(2) { animation-delay: 0.15s; }
+    .dots span:nth-child(3) { animation-delay: 0.3s; }
+    @keyframes bounce { 0%,80%,100%{transform:scale(0.6)} 40%{transform:scale(1)} }
+
+    /* ── Input bar ── */
+    #inputBar {
+      background: white;
+      border-top: 1px solid #e5e7eb;
+      padding: 0.875rem 1.5rem;
+      flex-shrink: 0;
+    }
+
+    .input-inner {
+      max-width: 860px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .input-controls {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    #newChatBtn {
+      display: none;
+      background: none;
+      border: 1px solid #e5e7eb;
+      color: #6b7280;
+      border-radius: 6px;
+      padding: 0.3rem 0.625rem;
+      font-size: 0.75rem;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    #newChatBtn:hover { border-color: #9ca3af; color: #374151; }
+
+    #turnInfo {
+      font-size: 0.7rem;
+      color: #9ca3af;
+      margin-left: auto;
+    }
+
+    .input-row { display: flex; gap: 0.625rem; align-items: flex-end; }
+
+    textarea {
+      flex: 1;
+      border: 1px solid #d1d5db;
+      border-radius: 10px;
+      padding: 0.7rem 0.875rem;
+      font-size: 0.9375rem;
+      font-family: inherit;
+      resize: none;
+      outline: none;
+      min-height: 48px;
+      max-height: 180px;
+      line-height: 1.5;
+      transition: border-color 0.15s;
+      color: #1d1d1f;
+    }
+    textarea:focus { border-color: #1d1d1f; }
+    textarea::placeholder { color: #9ca3af; }
+
+    #sendBtn {
+      background: #1d1d1f;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      padding: 0 1.125rem;
+      height: 48px;
+      font-size: 0.875rem;
+      font-weight: 500;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: opacity 0.15s;
+    }
+    #sendBtn:disabled { opacity: 0.4; cursor: not-allowed; }
+    #sendBtn:not(:disabled):hover { opacity: 0.82; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="header-brand">
+    <h1>Research Agent</h1>
+    <small>Context-aware web research · Claude Opus 4.7</small>
+  </div>
+  <div class="ctx-pill">
+    <div class="ctx-dot" id="ctxDot"></div>
+    <span id="ctxLabel">No context</span>
+  </div>
+</header>
+
+<div id="chat">
+  <div id="welcome">
+    <h2>What would you like to research?</h2>
+    <p>I search the web and remember our entire conversation so each follow-up builds on what we've already explored.</p>
+    <div class="chips">
+      <button class="chip" onclick="prefill('What are the latest breakthroughs in quantum computing?')">Quantum computing breakthroughs</button>
+      <button class="chip" onclick="prefill('How is AI regulation evolving globally in 2025?')">Global AI regulation</button>
+      <button class="chip" onclick="prefill('What renewable energy technologies show the most promise right now?')">Promising renewable energy</button>
+      <button class="chip" onclick="prefill('Explain CRISPR gene editing and its latest medical applications')">CRISPR &amp; gene editing</button>
+      <button class="chip" onclick="prefill('What is the current state of fusion energy research?')">Fusion energy research</button>
+      <button class="chip" onclick="prefill('How are large language models being used in scientific discovery?')">LLMs in science</button>
+    </div>
+  </div>
+</div>
+
+<div id="inputBar">
+  <div class="input-inner">
+    <div class="input-controls">
+      <button id="newChatBtn" onclick="newChat()">+ New conversation</button>
+      <span id="turnInfo"></span>
+    </div>
+    <div class="input-row">
+      <textarea
+        id="queryInput"
+        placeholder="Ask me to research anything…"
+        rows="1"
+        onkeydown="handleKey(event)"
+        oninput="resize(this)"
+      ></textarea>
+      <button id="sendBtn" onclick="send()">Research</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  let sessionId = localStorage.getItem('raSession') || null;
+  let turnCount = 0;
+  let busy = false;
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
+  function esc(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function md(text) {
+    // Fenced code blocks
+    text = text.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) =>
+      `<pre><code>${esc(code.trimEnd())}</code></pre>`);
+    // Inline code
+    text = text.replace(/`([^`\n]+)`/g, (_, c) => `<code>${esc(c)}</code>`);
+    // Bold / italic
+    text = text.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+    text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    text = text.replace(/\*(.+?)\*/g, '<em>$1</em>');
+    // Headers
+    text = text.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+    text = text.replace(/^## (.+)$/gm,  '<h2>$1</h2>');
+    text = text.replace(/^# (.+)$/gm,   '<h1>$1</h1>');
+    // Links
+    text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g,
+      '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+    // Numbered lists
+    text = text.replace(/^(\d+)\. (.+)$/gm, '<li>$2</li>');
+    text = text.replace(/(<li>[\s\S]*?<\/li>)/g, m =>
+      m.startsWith('<li>') ? `<ol>${m}</ol>` : m);
+    // Bullet lists
+    text = text.replace(/^[-*] (.+)$/gm, '<li>$1</li>');
+    // Paragraphs (double newline → p)
+    text = text.replace(/\n\n+/g, '</p><p>');
+    text = `<p>${text}</p>`;
+    // Single newlines inside paragraphs → br
+    text = text.replace(/(?<!>)\n(?!<)/g, '<br>');
+    // Clean up empty p tags
+    text = text.replace(/<p>\s*<\/p>/g, '');
+    return text;
+  }
+
+  function resize(el) {
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 180) + 'px';
+  }
+
+  function scrollDown() {
+    const c = document.getElementById('chat');
+    c.scrollTop = c.scrollHeight;
+  }
+
+  function updateCtx(turns) {
+    turnCount = turns;
+    const dot = document.getElementById('ctxDot');
+    const lbl = document.getElementById('ctxLabel');
+    if (turns > 0) {
+      dot.className = 'ctx-dot active';
+      lbl.textContent = `${turns} turn${turns > 1 ? 's' : ''} of context`;
+      document.getElementById('newChatBtn').style.display = 'inline-block';
+      document.getElementById('turnInfo').textContent =
+        `Session · ${turns} turn${turns > 1 ? 's' : ''}`;
+    } else {
+      dot.className = 'ctx-dot';
+      lbl.textContent = 'No context';
+      document.getElementById('newChatBtn').style.display = 'none';
+      document.getElementById('turnInfo').textContent = '';
+    }
+  }
+
+  function removeWelcome() {
+    document.getElementById('welcome')?.remove();
+  }
+
+  function appendMsg(role, htmlOrText, raw) {
+    removeWelcome();
+    const chat = document.getElementById('chat');
+    const wrap = document.createElement('div');
+    wrap.className = `msg ${role}`;
+
+    const initials = role === 'user' ? 'U' : '✦';
+    wrap.innerHTML = `
+      <div class="avatar">${initials}</div>
+      <div class="bubble"></div>
+    `;
+    const bubble = wrap.querySelector('.bubble');
+    if (raw) {
+      bubble.textContent = htmlOrText;
+    } else {
+      bubble.innerHTML = htmlOrText;
+    }
+    chat.appendChild(wrap);
+    scrollDown();
+    return bubble;
+  }
+
+  // ── Actions ────────────────────────────────────────────────────────────────
+
+  function prefill(text) {
+    const el = document.getElementById('queryInput');
+    el.value = text;
+    resize(el);
+    el.focus();
+  }
+
+  function handleKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+  }
+
+  function newChat() {
+    if (busy) return;
+    sessionId = null;
+    localStorage.removeItem('raSession');
+    document.getElementById('chat').innerHTML = `
+      <div id="welcome">
+        <h2>What would you like to research?</h2>
+        <p>I search the web and remember our entire conversation so each follow-up builds on what we've already explored.</p>
+        <div class="chips">
+          <button class="chip" onclick="prefill('What are the latest breakthroughs in quantum computing?')">Quantum computing breakthroughs</button>
+          <button class="chip" onclick="prefill('How is AI regulation evolving globally in 2025?')">Global AI regulation</button>
+          <button class="chip" onclick="prefill('What renewable energy technologies show the most promise right now?')">Promising renewable energy</button>
+          <button class="chip" onclick="prefill('Explain CRISPR gene editing and its latest medical applications')">CRISPR &amp; gene editing</button>
+          <button class="chip" onclick="prefill('What is the current state of fusion energy research?')">Fusion energy research</button>
+          <button class="chip" onclick="prefill('How are large language models being used in scientific discovery?')">LLMs in science</button>
+        </div>
+      </div>`;
+    updateCtx(0);
+  }
+
+  async function send() {
+    const input = document.getElementById('queryInput');
+    const query = input.value.trim();
+    if (!query || busy) return;
+
+    busy = true;
+    input.value = '';
+    input.style.height = 'auto';
+    document.getElementById('sendBtn').disabled = true;
+
+    // User bubble
+    appendMsg('user', query, true);
+
+    // Searching indicator
+    const chat = document.getElementById('chat');
+    const indicator = document.createElement('div');
+    indicator.id = 'indicator';
+    indicator.className = 'msg assistant';
+    indicator.innerHTML = `
+      <div class="avatar">✦</div>
+      <div class="thinking">
+        <div class="dots"><span></span><span></span><span></span></div>
+        Searching the web…
+      </div>`;
+    chat.appendChild(indicator);
+    scrollDown();
+
+    let bubble = null;
+    let accumulated = '';
+    let firstText = true;
+
+    try {
+      const res = await fetch('/api/research', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, session_id: sessionId }),
+      });
+
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let sseBuffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        sseBuffer += dec.decode(value, { stream: true });
+        const lines = sseBuffer.split('\n');
+        sseBuffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          let evt;
+          try { evt = JSON.parse(line.slice(6)); } catch { continue; }
+
+          if (evt.type === 'session') {
+            sessionId = evt.session_id;
+            localStorage.setItem('raSession', sessionId);
+
+          } else if (evt.type === 'text') {
+            if (firstText) {
+              document.getElementById('indicator')?.remove();
+              bubble = appendMsg('assistant', '');
+              firstText = false;
+            }
+            accumulated += evt.content;
+            bubble.innerHTML = md(accumulated) + '<span class="cursor"></span>';
+            scrollDown();
+
+          } else if (evt.type === 'done') {
+            if (bubble) bubble.innerHTML = md(accumulated);
+            updateCtx(turnCount + 1);
+
+          } else if (evt.type === 'error') {
+            document.getElementById('indicator')?.remove();
+            if (!bubble) bubble = appendMsg('assistant', '');
+            bubble.innerHTML = `<span style="color:#ef4444">⚠ ${esc(evt.message)}</span>`;
+          }
+        }
+      }
+    } catch (err) {
+      document.getElementById('indicator')?.remove();
+      if (!bubble) bubble = appendMsg('assistant', '');
+      bubble.innerHTML = `<span style="color:#ef4444">⚠ Connection error — please try again.</span>`;
+    } finally {
+      busy = false;
+      document.getElementById('sendBtn').disabled = false;
+      document.getElementById('queryInput').focus();
+    }
+  }
+
+  // ── Restore session on load ────────────────────────────────────────────────
+  if (sessionId) {
+    fetch(`/api/context/${sessionId}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.has_context) updateCtx(data.turn_count);
+      })
+      .catch(() => {
+        sessionId = null;
+        localStorage.removeItem('raSession');
+      });
+  }
+</script>
+</body>
+</html>
