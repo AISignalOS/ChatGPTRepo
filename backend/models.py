@@ -27,4 +27,4 @@ class AnalyticsEvent(Base):
     tool_id    = Column(Integer, ForeignKey("tools.id"), nullable=False)
     event_type = Column(String(50))   # "click" | "view"
     timestamp  = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    metadata   = Column(Text)         # JSON blob
+    extra      = Column(Text)         # JSON blob
