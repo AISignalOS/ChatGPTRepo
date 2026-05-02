@@ -8,9 +8,9 @@ const PRICE_COLORS = {
 }
 
 export default function ToolCard({ tool }) {
-  const handleClick = async () => {
-    await trackClick(tool.id)
+  const handleClick = () => {
     window.open(tool.url, '_blank', 'noopener,noreferrer')
+    trackClick(tool.id) // fire and forget — must not block window.open
   }
 
   return (
