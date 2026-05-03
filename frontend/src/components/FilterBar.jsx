@@ -1,50 +1,62 @@
-const USE_CASES = [
-  'content-writing', 'code-generation', 'image-generation',
-  'data-analysis', 'customer-support', 'productivity', 'research',
-  'audio-generation', 'video-generation', 'automation',
-  'writing-assistance', 'design', 'marketing', 'sales', 'education',
+const CATEGORIES = [
+  'code-generation',
+  'content-writing',
+  'image-generation',
+  'video-generation',
+  'audio-generation',
+  'research',
+  'data-analysis',
+  'productivity',
+  'automation',
+  'design',
+  'marketing',
+  'customer-support',
+  'education',
+  'writing-assistance',
+  'sales',
 ]
 
 const PRICE_TIERS = ['free', 'freemium', 'paid', 'enterprise']
 
 export default function FilterBar({ filters, onChange }) {
+  const setUseCase = (val) =>
+    onChange({ ...filters, use_case: filters.use_case === val ? '' : val })
+
+  const setPrice = (val) =>
+    onChange({ ...filters, price_tier: filters.price_tier === val ? '' : val })
+
   return (
-    <div className="filter-bar">
-      <input
-        type="text"
-        className="filter-search"
-        placeholder="Search tools..."
-        value={filters.search || ''}
-        onChange={e => onChange({ ...filters, search: e.target.value })}
-      />
-      <select
-        className="filter-select"
-        value={filters.use_case || ''}
-        onChange={e => onChange({ ...filters, use_case: e.target.value })}
-      >
-        <option value="">All use cases</option>
-        {USE_CASES.map(uc => (
-          <option key={uc} value={uc}>{uc}</option>
-        ))}
-      </select>
-      <select
-        className="filter-select"
-        value={filters.price_tier || ''}
-        onChange={e => onChange({ ...filters, price_tier: e.target.value })}
-      >
-        <option value="">All prices</option>
-        {PRICE_TIERS.map(pt => (
-          <option key={pt} value={pt}>{pt}</option>
-        ))}
-      </select>
-      {(filters.use_case || filters.price_tier || filters.search) && (
+    <div className="filter-section">
+      <div className="filter-row">
         <button
-          className="filter-clear"
-          onClick={() => onChange({})}
+          className={`filter-pill ${!filters.use_case ? 'active' : ''}`}
+          onClick={() => onChange({ ...filters, use_case: '' })}
         >
-          Clear
+          All tools
         </button>
-      )}
+
+        {CATEGORIES.map(cat => (
+          <button
+            key={cat}
+            className={`filter-pill ${filters.use_case === cat ? 'active' : ''}`}
+            onClick={() => setUseCase(cat)}
+          >
+            {cat}
+          </button>
+        ))}
+
+        <div className="filter-divider" />
+
+        {PRICE_TIERS.map(pt => (
+          <button
+            key={pt}
+            className={`filter-pill ${filters.price_tier === pt ? 'active' : ''}`}
+            onClick={() => setPrice(pt)}
+          >
+            {pt}
+          </button>
+        ))}
+      </div>
     </div>
   )
 }
